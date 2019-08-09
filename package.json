@@ -5,13 +5,15 @@
   "repository": "https://github.com/reruin/sharelist",
   "license": "Apache-2.0",
   "scripts": {
-    "start": "set NODE_ENV=dev && node app.js",
-    "dev": "./node_modules/.bin/nodemon app.js",
+    "start": "node app.js",
+    "dev": "./node_modules/.bin/nodemon app.js -i ./cache",
     "prd": "pm2 start app.js --name sharelist --env prod",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "@koa/cors": "^2.2.1",
+    "basic-ftp": "^3.4.4",
+    "googleapis": "^35.0.0",
     "koa": "^2.2.0",
     "koa-bodyparser": "^3.2.0",
     "koa-i18n": "^2.1.0",
@@ -26,10 +28,12 @@
     "koa-views": "^5.2.1",
     "less-middleware": "^2.2.1",
     "lowdb": "^1.0.0",
-    "mime": "^2.3.1",
+    "mime": "^2.4.2",
     "pug": "^2.0.0-rc.1",
+    "webdav": "^2.6.0",
+    "write-file-atomic": "^2.4.2",
     "xml2js": "^0.4.19",
-    "yaml": "^1.0.0-rc.8"
+    "yaml": "^1.5.0"
   },
   "devDependencies": {
     "nodemon": "^1.18.4",

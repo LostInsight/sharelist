@@ -1,5 +1,5 @@
 const request = require('request')
-const debug = false //process.env.NODE_ENV == 'dev'
+const debug = false
 const headers = {
   'Accept-Encoding': 'identity;q=1, *;q=0',
   'Accept-Language': 'zh-CN,zh;q=0.8',
@@ -21,8 +21,8 @@ http.header = (url, opts) => {
     request(opts, function(error, response, body) {
       if (error) {
         reject(error)
-      }else{
-        resolve(response)
+      } else {
+        resolve(response.headers)
       }
     })
   })
@@ -30,12 +30,12 @@ http.header = (url, opts) => {
 
 http.get = (url, opts = {}) => {
   let params = { ...opts }
-  params.headers = Object.assign({}, headers , params.headers || {})
+  params.headers = Object.assign({}, headers, params.headers || {})
   params.url = url
 
   if (debug) {
     params.proxy = 'http://127.0.0.1:1087'
-    console.log(params)
+    //console.log('DEBUG:', params)
   }
   return new Promise(function(resolve, reject) {
     request(params, function(error, response, body) {
@@ -50,17 +50,16 @@ http.get = (url, opts = {}) => {
 
 http.post = (url, form, opts) => {
   let params = { ...opts }
-  params.headers = Object.assign({}, headers , params.headers || {})
+  params.headers = Object.assign({}, headers, params.headers || {})
   params.url = url
   params.form = form
   params.method = 'POST'
-
   return new Promise(function(resolve, reject) {
     request(params, function(error, response, body) {
       if (!error && response.statusCode == 200) {
         resolve(response)
       } else {
-        reject(error || response.statusCode);
+        reject(error || response);
       }
     })
   })

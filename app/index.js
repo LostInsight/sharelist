@@ -13,6 +13,7 @@ const session = require('koa-session-minimal')
 const less = require('./middleware/koa-less')
 const addr = require('./middleware/koa-addr')
 const paths = require('./middleware/koa-paths')
+const render = require('./middleware/koa-render')
 
 const routers = require('./routers/index')
 const cors = require('@koa/cors')
@@ -23,7 +24,7 @@ const pluginLoad = require('./services/plugin').load
 // const proxy = require('./utils/proxy')
 
 const app = new Koa()
-
+app.proxy = true
 pluginLoad({
   dirs: [__dirname + '/plugins',path.resolve('plugins')],
 })
@@ -51,6 +52,8 @@ app.use(addr)
 
 app.use(paths)
 
+app.use(render)
+
 // 配置控制台日志中间件
 app.use(logger())
 
@@ -62,7 +65,7 @@ app.use(koaStatic(__dirname + '/public'))
 
 app.use(async (ctx , next) => {
   ctx.state.__ = ctx.__.bind(ctx)
-  ctx.state._title_ = config.getTitle.bind(ctx)
+  ctx.state._config_ = config.getConfig.bind(ctx)
   await next()
 })
 

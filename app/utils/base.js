@@ -1,3 +1,5 @@
+const mime = require('mime');
+
 const rnd = (min , max) => Math.floor(min+Math.random()*(max-min))
 
 const isType = (type) => (obj) => ( Object.prototype.toString.call(obj) === `[object ${type}]`)
@@ -14,9 +16,9 @@ const isEmail = (v) => /^[A-Za-zd]+([-_.][A-Za-zd]+)*@([A-Za-zd]+[-.])+[A-Za-zd]
 
 const parsePath = (url)=>{
   if(url){
-    let raw = url.split('/')
+    let raw = url.replace(/^\/*/,'').split('/')
     let paths = []
-    for(let i = 0 ; i< raw.length ; i++){
+    for(let i = 0 ; i<raw.length ; i++){
       if( i == 0 || /[^!]$/.test(raw[i-1]) ){
         paths.push(decodeURIComponent(raw[i]))
       }
@@ -27,7 +29,7 @@ const parsePath = (url)=>{
   }
 }
 
-const MIMEType = (v) => {
+const getFileType = (v) => {
   if(['mp4' , 'mpeg' , 'wmv' , 'webm' , 'avi' , 'rmvb' , 'mov' , 'mkv','f4v','flv'].includes(v)){
     return 'video'
   }
@@ -52,6 +54,10 @@ const MIMEType = (v) => {
   else{
     return 'other'
   }
+}
+
+const getMIME = (v) => {
+  return mime.getType(v)
 }
 
 const extend = (source , src) => {
@@ -97,8 +103,8 @@ const pathNormalize = (path) => {
 }
 
 const base64 = {
-  encode : (v) => new Buffer(v).toString('base64'),
-  decode : (v) => new Buffer(v, 'base64').toString()
+  encode : (v) => Buffer.from(v).toString('base64'),
+  decode : (v) => Buffer.from(v, 'base64').toString()
 }
 
 const enablePreview = (v) => ['audio','video','image'].includes(v)
@@ -108,7 +114,7 @@ const enableRange = (v) => ['audio','video'].includes(v)
 const isRelativePath = (v) => !/^http/.test(v)
 
 module.exports = {
-  parsePath , MIMEType,
+  parsePath , getFileType, getMIME,
 
   isArray , isObject, isString, isDate, isEmail, isRelativePath , enablePreview, enableRange , 
 

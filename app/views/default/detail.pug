@@ -1,0 +1,14 @@
+extends partial/layout
+
+block content
+  
+  header.detail
+      a.home #{data.name}
+      a.download.ic.download(href=url)
+  section.wrap
+    .detail
+      -if(data.body)
+        | !{data.body}
+      -else
+        p= __('unable_to_preview')   
+  include partial/footer

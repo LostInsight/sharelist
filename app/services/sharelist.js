@@ -1,10 +1,10 @@
-const yaml = require('yaml').default
+const yaml = require('yaml')
 const http = require('../utils/http')
 const base = require('../utils/base')
 const cache = require('../utils/cache')
 const config = require('../config')
 const format = require('../utils/format')
-const { getDrive, getAuth, getSource, updateLnk, checkAuthority, updateFile, updateFolder } = require('./plugin')
+const { getDrive, getAuth, getStream , getSource, updateLnk, checkAuthority, updateFile, updateFolder , getPreview , isPreviewable } = require('./plugin')
 
 const access_check = (d) => {
   return d
@@ -35,7 +35,7 @@ class ShareList {
     //{gd , od , xd , ld , remote}
   }
 
-  async path(paths, query, full_paths) {
+  async path(paths, query, full_paths , method) {
     let pl = paths.join('/'),
       hit, resp = false,
       miss
@@ -50,7 +50,7 @@ class ShareList {
     if (pl == '') {
       hit = this.mount()
     } else {
-      let parent = await this.path(paths.slice(0, -1), query, full_paths)
+      let parent = await this.path(paths.slice(0, -1), query, full_paths , method)
       let curname = decodeURIComponent(paths[paths.length - 1])
       //父目录必然是 folder
       if (parent) {
@@ -63,7 +63,7 @@ class ShareList {
           hit = children[index]
           //只为目录做缓存
           if (hit.type == 'folder' && hit.id){
-            cache(pl, hit.protocol + ':' + hit.id)
+            cache.set(pl, hit.protocol + ':' + hit.id)
           }
         } else {
           return false
@@ -94,13 +94,13 @@ class ShareList {
         vendor = getDrive(hit.protocol)
 
         //缓存 快捷方式 的实际链接
-        cache(originId, hit.protocol + ':' + hit.id)
+        cache.set(originId, hit.protocol + ':' + hit.id)
       }
 
       // folder /a/b/c
       if (hit.type == 'folder') {
 
-        resp = await vendor.folder(hit.id, { query, paths: diff(paths, full_paths), content: hit.content })
+        resp = await vendor.folder(hit.id, { query, req : config.getRuntime('req') ,paths: diff(paths, full_paths), content: hit.content })
         if (resp) updateFolder(resp)
         //let passwd = base.checkPasswd(resp)
         //resp.auth = passwd !== false
@@ -108,7 +108,7 @@ class ShareList {
         //存在 id 变化 ，例如 OneDrive 的shareid <-> resid, ln 的链接
         //重新缓存 path -> resid
         if (hit.id != resp.id) {
-          cache(pl, hit.protocol + ':' + resp.id)
+          cache.set(pl, hit.protocol + ':' + resp.id)
         }
 
       }
@@ -127,7 +127,7 @@ class ShareList {
 
   async auth(data, user, passwd) {
     let hit = data.children.find(i => i.name == '.passwd')
-    let content = await getSource(hit.id, hit.protocol)
+    let content = await getSource(hit.id, hit.protocol , hit)
     let body = yaml.parse(content)
     let auth = getAuth(body.type)
     if (auth) {
@@ -137,8 +137,29 @@ class ShareList {
     }
   }
 
+  /*
+   * 获取文件预览页面
+   */
+  async preview(data){
+    return await getPreview(data)
+  }
+
+  /*
+   * 根据文件ID和协议获取可读流
+   */
+  async stream(ctx , id , type , protocol , data){
+    return await getStream(ctx , id , type , protocol ,  data)
+  }
+
+  /*
+   * 检测文件是否支持预览
+   */
+  async isPreviewable(data){
+    return await isPreviewable(data)
+  }
+
   mount() {
-    let paths = config.getPath() || [], key
+    let paths = config.getPath(), key
 
     // 如果只有一个目录 则直接列出
     if (paths.length == 1) {

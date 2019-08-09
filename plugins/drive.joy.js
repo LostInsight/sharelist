@@ -1,14 +1,14 @@
 /*
- * 91
+ * joy
  */
 
-const name = '91'
+const name = 'joy'
 
 const version = '1.0'
 
-const protocols = ['91']
+const protocols = ['joy']
 
-const defaultProtocol = '91'
+const defaultProtocol = 'joy'
 
 const host = Buffer.from('aHR0cDovL3d3dy45MXBvcm4uY29t', 'base64').toString('binary')
 
@@ -18,20 +18,13 @@ module.exports = ({request , getConfig , getSource , getRandomIP }) => {
   
   let last_update = Date.now()
 
+  let decode = '';
+
   const pageSize = 100
 
   const min = (a , b) => (a < b ? a : b)
 
-  const cats = [
-    {id:'/default',cat:'default',name:'默认'},
-    {id:'/rp',cat:'rp',name:'最近得分'},
-    {id:'/rf',cat:'rf',name:'最近加精'},
-    {id:'/hot',cat:'hot',name:'当前最热'},
-    {id:'/top',cat:'top',name:'本月最热'},
-    {id:'/tf',cat:'tf',name:'本月收藏'},
-    {id:'/mf',cat:'mf',name:'收藏最多'},
-    {id:'/md',cat:'md',name:'高清'},
-  ]
+  let cats = []
   //cate_page_viewkey
 
   const createHeaders = () => {
@@ -43,18 +36,53 @@ module.exports = ({request , getConfig , getSource , getRandomIP }) => {
       'HTTP_X_FORWARDED_FOR':ip
     }
   }
-  const mount = () => {
+  const mount = async () => {
     return {
       id : '/',
       type : 'folder',
       protocol:defaultProtocol,
       updated_at:Date.now(),
-      children : cats.map(i=>{
+      children : (await getCats()).map(i=>{
         return {id:i.id , name:i.name , type:'folder',protocol:defaultProtocol}
       })
     }
   }
 
+  const getCats = async() => {
+    if(cats.length == 0){
+      let { body } = await request.get(`${host}/v.php`);
+      body.replace(/v\.php\?category=([a-z\d]+)&viewtype=([a-z\d]+)">([^<]+)/ig , ($0,$1,$2,$3) => {
+        cats.push({id:'/'+$1 , cat:$1,name:$3.replace(/\s/g,'')})
+      })
+      cats.unshift({id:'/default' , cat:'default' , name:'默认'})
+    }
+
+    return cats
+  }
+
+  const decodeUrl = async (body) => {
+    if(!decode){
+      let scrs = await request.get(`${host}/js/md5.js`)
+      if(scrs.body) decode = scrs.body
+    }
+
+    let code = (body.match(/strencode\([\w\W]+?\)/) || [''])[0]
+    
+    let url = ''
+
+    if(code){
+      let fn = new Function(`${decode};return ${code};`);
+      try{
+        let source = fn()
+        if(source){
+          url = (source.match(/src\s*=\s*["']([^"']+)/) || ['',''])[1]
+        }
+      }catch(e){
+
+      }
+    }
+    return url;
+  }
   const getNameByCate = (cate) => {
     let hit = cats.find( i => i.cat == cate)
     if( hit ){
@@ -73,13 +101,23 @@ module.exports = ({request , getConfig , getSource , getRandomIP }) => {
     }
   }
 
+  const getFileSize = async (url , headers) => {
+    let nh = await request.header(url , {headers})
+    if(nh && nh['content-length']){
+      return nh['content-length']
+    }else{
+      return null
+    }
+  }
+
   const getDetail = async (viewkey) => {
 
     let { body } = await request.get(`${host}/view_video.php?viewkey=${viewkey}`, {headers:createHeaders()})
 
-    let url = (body.match(/source\s*src\s*=\s*"([^"]+)/) || ['',''])[1]
+    // let url = (body.match(/source\s*src\s*=\s*"([^"]+)/) || ['',''])[1]
     let name =(body.match(/viewvideo-title">([^<]+)/) || ['',''])[1].replace(/[\r\n]/g,'').replace(/(^[\s]*|[\s]*$)/g,'')
     
+    let url = await decodeUrl(body)
 
     return {
       id:'/f/'+viewkey,
@@ -105,11 +143,11 @@ module.exports = ({request , getConfig , getSource , getRandomIP }) => {
 
     let pageCount
 
-    if( cache[`${cate}_page_count`] && last_update && ( Date.now() - last_update < getConfig().max_age_dir) ){
+    if( cache[`${cate}_page_count`] && last_update && ( Date.now() - last_update < getConfig('max_age_dir')) ){
       pageCount = cache[`${cate}_page_count`]
     }else{
       let { body } = await request.get(`${host}/v.php?page=1&category=${cate}`)
-      pageCount = parseInt(body.match(/(?<=page=\d+\">)[\d]+/g).pop() || 0)
+      pageCount = parseInt(body.match(/(?<=page=\d+\">)\d+/g).pop() || 0)
       cache[`${cate}_page_count`] = pageCount
       last_update = Date.now()
     }
@@ -178,7 +216,7 @@ module.exports = ({request , getConfig , getSource , getRandomIP }) => {
   }
 
   const getList = async (id) => {
-    if( cache[id] && cache[id].$cached_at && ( Date.now() - cache[id].$cached_at < getConfig().max_age_dir) ){
+    if( cache[id] && cache[id].$cached_at && ( Date.now() - cache[id].$cached_at < getConfig('max_age_dir')) ){
       return cache[id]
     }
 
@@ -252,7 +290,7 @@ module.exports = ({request , getConfig , getSource , getRandomIP }) => {
     // case 0
     if( lv == 0 ){
       if( len == 0 ){
-        return mount() 
+        return await mount() 
       }
       // case b , c , d => mock
       else { 
@@ -320,7 +358,7 @@ module.exports = ({request , getConfig , getSource , getRandomIP }) => {
    * /f/viewkey
    */
   const file = async(id) =>{
-    if( cache[id] && cache[id].$cached_at && ( Date.now() - cache[id].$cached_at < getConfig().max_age_file) ){
+    if( cache[id] && cache[id].$cached_at && ( Date.now() - cache[id].$cached_at < getConfig('max_age_file')) ){
       return cache[id]
     }
 
@@ -328,6 +366,11 @@ module.exports = ({request , getConfig , getSource , getRandomIP }) => {
     if(viewkey[0]){
       let resp = await getDetail( viewkey[0] )
       resp.headers = createHeaders()
+
+      let size = await getFileSize(resp.url , resp.headers)
+      if(size){
+        resp.size = size
+      }
       cache[id] = resp
       return resp
     }else{

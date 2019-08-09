@@ -1,12 +1,12 @@
 const fs = require('fs')
 const path = require('path')
 const querystring = require('querystring')
-const {MIMEType , isArray , isObject , params , base64 , getRandomIP } = require('../utils/base')
+const {getFileType , getMIME , isArray , isObject , params , base64 , getRandomIP , retrieveSize } = require('../utils/base')
 const format = require('../utils/format')
 const cache = require('../utils/cache')
 const http = require('../utils/http')
 const config = require('../config')
-const { getHTTPFile } = require('../utils/sendfile')
+const { sendFile , sendHTTPFile ,sendStream, getFile, getHTTPFile } = require('../utils/sendfile')
 
 const assign = (...rest) => Object.assign(...rest)
 
@@ -18,6 +18,8 @@ let formatMap = new Map()
 
 let authMap = new Map()
 
+let previewMap = new Map()
+
 let resources = {}
 
 let resourcesCount = 0
@@ -27,14 +29,46 @@ const getSource = async (id , driverName) => {
     let vendor = getDrive(driverName)
     let d = await vendor.file(id)
     if(d.outputType === 'file'){
-      if(fs.existsSync( d.url )){
-        return fs.readFileSync(d.url, 'utf8')
-      }
-    }else{
+      return await getFile(d.url)
+    }
+    else if(d.outputType === 'stream' && vendor.stream){
+      return await vendor.stream(id , {contentFormat:true});
+    }
+    else{
       return await getHTTPFile(d.url , d.headers || {})
     }
   }
   return false
+}
+
+//和getSource类似 file | stream | url
+const getStream = async (ctx , url ,type, protocol , data) => {
+  if(type === 'file'){
+    return await sendFile(ctx , url)
+  }
+  else if(type === 'stream'){
+    let vendor = getDrive(protocol)
+    if(vendor && vendor.stream){
+      return await sendStream(ctx , url , vendor.stream , data);
+    }
+  }
+  else{
+    return await sendHTTPFile(ctx , url , data)
+  }
+
+  return false
+}
+
+// 获取数据预览
+const getPreview = async (data) => {
+  let ext = data.ext
+  let name = previewMap.get(ext)
+  console.log(resources[name].preview[ext])
+  return name ? await resources[name].preview[ext](data , config.getRuntime('req')) : null
+}
+
+const isPreviewable = async (data) => {
+  return previewMap.has(data.ext)
 }
 
 const helper = {
@@ -48,7 +82,15 @@ const helper = {
   getSource: getSource,
   getConfig : config.getConfig,
   getRandomIP:getRandomIP,
+  retrieveSize : format.retrieveByte,
+  saveDrive : config.saveDrive,
+  getDrive : config.getDrive,
+  getRuntime:config.getRuntime
 }
+
+const setPrivateConfig = (name) => ( path ) => {
+  
+} 
 
 const load = (options) => {
 
@@ -106,6 +148,12 @@ const load = (options) => {
             formatMap.set(key , id)
           }
         }
+
+        if(resource.preview){
+          for(let key in resource.preview){
+            previewMap.set(key , id)
+          }
+        }
       }
     }
   }
@@ -126,7 +174,7 @@ const getFormater = (ext) => {
 //更新文件详情数据
 const updateFile = async (file) => {
   if(file.type != 'folder'){
-    file.type = MIMEType(file.ext)
+    file.type = getFileType(file.ext)
   }
 
   file.displaySize = format.byte(file.size)
@@ -142,6 +190,7 @@ const updateFile = async (file) => {
 // 用于更新目录数据
 const updateFolder = (folder) => {
   let parentType = folder.protocol
+  if(!folder.children) return folder
   folder.children.forEach( (d , index) => {
     let name = d.name
 
@@ -186,7 +235,8 @@ const updateFolder = (folder) => {
     }
 
     if(d.type != 'folder'){
-      d.type = MIMEType(d.ext)
+      d.type = getFileType(d.ext)
+      if(!d.mime) d.mime = getMIME(d.ext) || 'file/unknow'
     }
 
     d.displaySize = format.byte(d.size)
@@ -265,4 +315,4 @@ const checkAuthority = async (d , user, passwd) => {
 
 }
 
-module.exports = { load , getDrive , getSource , updateFolder , updateFile , updateLnk , getVendors , getAuth}
+module.exports = { load , getDrive , getStream , getSource , updateFolder , updateFile , updateLnk , getVendors , getAuth , getPreview , isPreviewable}

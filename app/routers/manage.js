@@ -7,8 +7,11 @@ const manage = require('../controllers/manage')
 
 const routers = router
   .get('/', manage.home)
-  .get('/:token', manage.home)
-  .post('/:token', manage.update)
+  .post('/', manage.home)
+  .post('/api' , manage.api)
+  .post('/api/:token', manage.api_token)
+  .get('/api/:token', manage.api_token)
+  // .post('/:token', manage.update)
 
  
 module.exports = routers

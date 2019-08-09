@@ -1,6 +1,7 @@
 const fs = require('fs')
 const mime = require('mime')
 const http = require('./http')
+const { Writable } = require('stream');
 
 const getRange = (r , total)=>{
   let [, start, end] = r.match(/(\d*)-(\d*)/);
@@ -8,6 +9,18 @@ const getRange = (r , total)=>{
   end = end ? parseInt(end) : total - 1
 
   return [start , end]
+}
+
+const mergeHeaders = (a , b) => {
+  const exclude = ['host','accept-encoding']
+  let pre = {...a , ...b}
+  let headers = {}
+  for(let key in pre){
+    if(exclude.includes(key) == false){
+      headers[key] = pre[key]
+    }
+  }
+  return headers
 }
 
 const sendFile = async(ctx , path , {maxage , immutable} = {maxage:0 , immutable:false})=>{
@@ -60,12 +73,53 @@ const sendFile = async(ctx , path , {maxage , immutable} = {maxage:0 , immutable
   }
   ctx.length = chunksize
 
-  ctx.response.set('Content-Disposition',`attachment;filename=${encodeURIComponent(filename)}`)
+  ctx.set('Content-Disposition',`attachment;filename=${encodeURIComponent(filename)}`)
   ctx.body = fs.createReadStream(path , readOpts)
 }
 
-const sendHTTPFile = async (ctx , url , headers) => {
-  ctx.body = ctx.req.pipe(http({url , headers})).pipe(ctx.res)
+const getFileSize = async (url , headers) => {
+  let nh = await http.header(url , {headers})
+  if(nh && nh['content-length']){
+    return nh['content-length']
+  }else{
+    return null
+  }
+}
+const sendHTTPFile = async (ctx , url  ,data) => {
+  let headers = data.headers || {}
+
+  headers = mergeHeaders(ctx.req.headers , headers)
+  let fileSize = null;
+  if(data && data.size){
+    fileSize = data.size;
+  }
+  
+  if(fileSize){
+    let range = ctx.get('range')
+    let fileSize = data.size
+    let chunksize = fileSize
+
+    if(range){
+      let [start , end] = getRange(ctx.header.range , fileSize)
+      ctx.set('Content-Range', 'bytes ' + `${start}-${end}/${fileSize}`)
+      ctx.status = 206
+
+      chunksize = end - start + 1
+    }else{
+      ctx.set('Content-Range', 'bytes ' + `0-${fileSize-1}/${fileSize}`)
+    }
+    ctx.length = chunksize
+  }
+
+  // console.log(headers)
+  // console.log('>>>>>',headers , url , data)
+  ctx.body = ctx.req.pipe(http({url , headers})) //.pipe(ctx.res)
+}
+
+const getFile = async (url) => {
+  if(fs.existsSync( url )){
+    return fs.readFileSync(url, 'utf8')
+  }
 }
 
 const getHTTPFile = async (url ,headers = {}) => {
@@ -73,4 +127,45 @@ const getHTTPFile = async (url ,headers = {}) => {
   return body
 }
 
-module.exports = { sendFile , sendHTTPFile , getHTTPFile }
+const sendStream = async (ctx , url , adapter , data = {}) => {
+  let fileSize = null , start , range = {};
+
+  headers = mergeHeaders(ctx.req.headers , data.headers || {})
+
+  let havaSize = false
+  if(data && data.size){
+    fileSize = data.size;
+    havaSize = true
+  }
+
+  if(fileSize){
+    if(ctx.get('range')){
+      let [ start , end ] = getRange(ctx.get('range') , fileSize)
+      range = {start , end , chunksize : end - start + 1}
+    }else{
+      range = {start:0 , end:fileSize-1 , chunksize:fileSize}
+    }
+  }
+
+  let opts = { ...data , reqHeaders:headers , range , ctx:ctx}
+
+  const { stream  , acceptRanges } = await adapter(url , opts)
+
+  if(havaSize){
+    if(acceptRanges){
+      ctx.status = 206
+      ctx.set('Accept-Ranges', 'bytes')
+      ctx.set('Content-Range', 'bytes ' + `${range.start}-${range.end}/${range.chunksize}`)
+      ctx.length = range.chunksize
+    }else{
+      ctx.set('Accept-Ranges', 'none')
+      ctx.length = fileSize
+    }
+  }else{
+    ctx.set('Accept-Ranges', 'none')
+  }
+  
+  if(stream) ctx.body = stream
+}
+
+module.exports = { sendFile , sendHTTPFile , sendStream , getHTTPFile , getFile }
